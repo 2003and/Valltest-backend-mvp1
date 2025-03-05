@@ -8,30 +8,44 @@ from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from passlib.context import CryptContext
+from openai import OpenAI
 from pydantic import BaseModel
 from typing import Optional
 import jwt
-from backend_secrets import *
+import os
+from datetime import datetime, timedelta
+from app.backend_secrets import *
 from fastapi.security import HTTPBearer
+from jwt import PyJWKClient
+import ssl
 
 import requests
+# import ast
 
 # Настройка FastAPI
 app = FastAPI(root_path="/api")
 
+# ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+# ssl_context.load_cert.chain("/cert.crt", keyfile="/cert.key")
+
 origins = [
-    "https://хост_на_фронт_в_яндексе",
+    "http://127.0.0.1:3000",
     "http://localhost:3000",
+    "https://185.32.84.201:3000",
     "https://localhost:3000",
-    "https://хост_на_домене"
+    "https://10111897.xyz"
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins, # related to `origins`
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+client = OpenAI(
+    api_key=OPENAI_API_KEY,
 )
 
 # Настройка базы данных
@@ -42,8 +56,6 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Шифрование паролей
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-# хз используется ли
-
 
 # Таблицы
 class User(Base):
@@ -61,8 +73,8 @@ class Subject(Base):
     name = Column(String, unique=True, index=True)
 
 
-class Topic(Base):
-    __tablename__ = "topic"
+class Theme(Base):
+    __tablename__ = "theme"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
     subject_id = Column(Integer, ForeignKey("subject.id", ondelete="CASCADE"))
@@ -90,18 +102,11 @@ class UserAnswers(Base):
     problem_id = Column(Integer, ForeignKey("problem.id", ondelete="CASCADE"))
     answer_num = Column(Integer)
 
-
 # Модель для запроса и ответа
-# TODO: add more validation if needed
-class QuestionAutoGenerateRequest(BaseModel):
+class QuestionRequest(BaseModel):
     topic: str = "math"
     difficulty: str = "easy" # Уровень сложности: easy, medium, hard
     amount: int = 10
-
-
-class QuestionFromTextRequest(BaseModel):
-    text: str = "[your prompt here]"
-
 
 class BaseResponse(BaseModel):
     response: str
@@ -121,6 +126,7 @@ class AnswerRequest(BaseModel):
 class QuestionBatchResponse(BaseModel):
     batch: list
 
+Base.metadata.create_all(bind=engine)
 
 # JWT настройки
 SECRET_KEY = jwt_secret  # Замените на свой секретный ключ
@@ -132,16 +138,13 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
-
 class TokenData(BaseModel):
     username: str
-
 
 class UserCreate(BaseModel):
     username: str
     password: str
     email: str
-
 
 # Создание таблиц
 Base.metadata.create_all(bind=engine)
@@ -157,7 +160,6 @@ class UnauthenticatedException(HTTPException):
         super().__init__(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Requires authentication"
         )
-
 
 class VerifyToken:
     """Does all the token verification using PyJWT"""
@@ -204,6 +206,8 @@ class VerifyToken:
 
 auth = VerifyToken()
 
+# OAuth2
+# oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 token_auth_scheme = HTTPBearer()
 
 async def fetchCurrentUser(sub, token):
@@ -215,12 +219,76 @@ async def fetchCurrentUser(sub, token):
             return await response.json()
 
 
+# # Функции работы с пользователями
+# def get_user(db, username: str):
+#     return db.query(User).filter(User.username == username).first()
+
+# def create_user(db, user: UserCreate):
+#     hashed_password = pwd_context.hash(user.password)
+#     db_user = User(username=user.username, hashed_password=hashed_password, email=user.email)
+#     db.add(db_user)
+#     db.commit()
+#     db.refresh(db_user)
+#     return db_user
+
+# def verify_password(plain_password: str, hashed_password: str) -> bool:
+#     return pwd_context.verify(plain_password, hashed_password)
+
+# def authenticate_user(db, username: str, password: str):
+#     user = get_user(db, username)
+#     if not user or not verify_password(password, user.hashed_password):
+#         return None
+#     return user
+
+# def create_access_token(data: dict, expires_delta: timedelta = None):
+#     to_encode = data.copy()
+#     if expires_delta:
+#         expire = datetime.utcnow() + expires_delta
+#     else:
+#         expire = datetime.utcnow() + timedelta(minutes=15)
+#     to_encode.update({"exp": expire})
+#     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+#     return encoded_jwt
+
+# Эндпоинт для логина
+# @app.get("/login", response_model=Token)
+# async def login(token: str = Depends(token_auth_scheme)):
+#     db = SessionLocal()
+#     user = authenticate_user(db, token.username, token.password)
+#     if not user:
+#         raise HTTPException(
+#             status_code=status.HTTP_401_UNAUTHORIZED,
+#             detail="Incorrect username or password",
+#             headers={"WWW-Authenticate": "Bearer"},
+#         )
+#     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+#     access_token = create_access_token(data={"sub": user.username}, expires_delta=access_token_expires)
+#     return {"access_token": access_token, "token_type": "bearer"}
+
 # Эндпоинт для защищенных ресурсов
-# KEEP IN MIND - OG code is in main_OLD.py in case you'll need it
 @app.get("/users/me")
 async def read_users_me(auth_result = Security(auth.verify)):
     print('Вызван защищённый авторизацией эндпоинт')
     print(json.dumps(auth_result, indent=4))
+    # credentials_exception = HTTPException(
+    #     status_code=status.HTTP_401_UNAUTHORIZED,
+    #     detail="Could not validate credentials",
+    #     headers={"WWW-Authenticate": "Bearer"},
+    # )
+    # try:
+    #     result = token.credentials
+    #     # payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    #     # username: str = payload.get("sub")
+    #     # if username is None:
+    #     #     raise credentials_exception
+    #     # token_data = TokenData(username=username)
+    # except jwt.PyJWTError:
+    #     raise credentials_exception
+    # db = SessionLocal()
+    # user = get_user(db, username=token_data.username)
+    # if user is None:
+    #     raise credentials_exception
+    # return user
     return auth_result
 
 
@@ -228,12 +296,13 @@ async def read_users_me(auth_result = Security(auth.verify)):
 def private(token: str = Depends(token_auth_scheme)):
     """A valid access token is required to access this route"""
 
+    # result = jwt.decode(token.credentials, SECRET_KEY, algorithms=[ALGORITHM])
     result = jwt.decode(token.credentials, options={"verify_signature": False})
 
     return result
 
-
 @app.post("/register/")
+#async def register_user(username: str, password: str, email: str):
 async def register_user(username: str, email: str):
     """
     Регистрация нового пользователя.
@@ -245,7 +314,7 @@ async def register_user(username: str, email: str):
             raise HTTPException(status_code=400, detail="Пользователь уже существует.")
 
         # Создаем нового пользователя
-        # hashed_password = pwd_context.hash(password)
+        #hashed_password = pwd_context.hash(password)
         # new_user = User(username=username, hashed_password=hashed_password, email=email)
         new_user = User(username=username, email=email, )
         db.add(new_user)
@@ -305,13 +374,14 @@ async def add_answer(answer: AnswerRequest, token: str = Depends(token_auth_sche
 
 # Маршрут для генерации математических вопросов
 @app.post("/generate_question/")# , response_model=QuestionBatchResponse)
-async def generate_question(request: QuestionAutoGenerateRequest):
-    # TODO: add Test Name field andput it in the DB
+async def generate_question(request: QuestionRequest):
+#async def generate_question(request: str):
     """
     Генерирует математический вопрос и ответ с использованием OpenAI API.
     """
+#    request = json.loads(request_raw)
     db = SessionLocal()
-    # TODO: make a different prompt for all difficulties (2D dict)
+    # TODO: add optional description to QuestionRequest
     # TODO: add fields in screenshot taken on March 3 2025
     topics = {
         "integral": "Вопрос про интегралы, он должен быть либо про неопределённый интеграл, либо про определённый интеграл.",
@@ -348,8 +418,15 @@ async def generate_question(request: QuestionAutoGenerateRequest):
                     }
                 ]
             }
+            # prompt = (
+            #     f"Generate a math question of {request.difficulty} difficulty and provide the solution. " +
+            #     temp +
+            #     "Write \"Answer:\" before the solution and don't write \"Question:\" before the question" +
+            #     "Don't explain the answer, just tell me the result"
+            #     "Use random numbers, not just 7 and 5, and don't repeat yourself"
+            #     "Put \"$$\" in the beginning and end of the formula, so that it can be read by a LaTeX parser"
+            # )
             print("Response generating....")
-
             # Запрос к YandexGPT
             url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
             headers = {
@@ -357,28 +434,41 @@ async def generate_question(request: QuestionAutoGenerateRequest):
                 "Authorization": "Api-Key AQVN3Gy8RXHx2J4ocgbGY47qr9UMigMSI2nwDJDF"
             }
             response = requests.post(url, headers=headers, json=prompt)
-
-            # Извлечение ответа
+            # response = client.chat.completions.create(
+            #     messages=[
+            #         {
+            #             "role": "user",
+            #             "content": prompt,
+            #         }
+            #     ],
+            #     model="gpt-4o-mini",
+            #    max_tokens=150
+            # )
             print(f"Answer {i} parsing....")
+            # Извлечение ответа
+            # content = response.choices[0].message.content.strip()
             content_raw = response.text
             content = json.loads(content_raw)["result"]["alternatives"][0]["message"]["text"]
             print(content)
+            # content = ast.literal_eval(content_raw)
 
             # Разделение на вопрос и ответ
             if "Ответ:" in content:
                  question, answer = content.replace("Вопрос: ", "").split("Ответ:")
             else:
                  raise HTTPException(status_code=500, detail="Не удалось извлечь ответ.")
-            
-            # Добавление вопроса в батч вопросов
             new_batch.append({"question": question.strip(), "answer": answer.strip()})
+            #return {"question": question.strip(), "answer": answer.strip()}
         print("returning")
+        # return {"question": question.strip(), "answer": answer.strip()}
 
         return {"batch": new_batch}
+        #print(json.loads(content.replace("\\",""))["result"]["alternatives"][0]["message"]["text"])
+        # return {"batch": content}
+
 
         # raw_problem = {"question": "What is 2+3?", "answer": "5"}
 
-        # TODO: implement adding to the table
         # # add record to "Problem" table
         # new_problem = Problem(theme_id=1, raw_data=raw_problem["question"], correct_answer=1)
         # db.add(new_problem)
@@ -395,85 +485,8 @@ async def generate_question(request: QuestionAutoGenerateRequest):
         # for i in range(request.amount):
         #     ans.append({"question": "What is 2+3?", "answer": "5"})
         # return {"batch": ans}
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка генерации вопроса: {e}")
 
-# Маршрут для генерации математических вопросов
-@app.post("/generate_question_from_text/")# , response_model=QuestionBatchResponse)
-async def generate_question(request: QuestionFromTextRequest):
-    # TODO: add Test Name field andput it in the DB
-    """
-    Генерирует математический вопрос и ответ с использованием OpenAI API.
-    """
-    db = SessionLocal()
-    try:
-        # TODO: rewrite prompt to generate a JSON
-        new_batch = []
-        for i in range(3): # Will be redundant - Ai decides how many questions are there needed
-        #TODO: add a dictionary/json with specific prompts for specific topics
-        #This prompt will only be used if a specific prompt wasn't found in the aformentioned json
-            prompt = {
-            "modelUri": "gpt://b1gefo1sef4nbt0kc8tb/yandexgpt-lite",
-            "completionOptions": {
-                "stream": False,
-                "temperature": 0.6,
-                # "maxTokens": "2000"
-            },
-            "messages": [
-                {
-                    "role": "user",
-                    "text": request.text, # TODO: generate 3 wrong answers and 1 correct answer
-                    }
-                ]
-            }
-            print("Response generating....")
-
-            # Запрос к YandexGPT
-            url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": "Api-Key AQVN3Gy8RXHx2J4ocgbGY47qr9UMigMSI2nwDJDF"
-            }
-            response = requests.post(url, headers=headers, json=prompt)
-
-            # Извлечение ответа
-            print(f"Answer {i} parsing....")
-            content_raw = response.text
-            content = json.loads(content_raw)["result"]["alternatives"][0]["message"]["text"]
-            print(content)
-
-            # Разделение на вопрос и ответ
-            if "Ответ:" in content:
-                 question, answer = content.replace("Вопрос: ", "").split("Ответ:")
-            else:
-                 raise HTTPException(status_code=500, detail="Не удалось извлечь ответ.")
-            
-            # Добавление вопроса в батч вопросов
-            new_batch.append({"question": question.strip(), "answer": answer.strip()})
-        print("returning")
-
-        return {"batch": new_batch}
-
-        # raw_problem = {"question": "What is 2+3?", "answer": "5"}
-
-        # TODO: implement adding to the table
-        # # add record to "Problem" table
-        # new_problem = Problem(theme_id=1, raw_data=raw_problem["question"], correct_answer=1)
-        # db.add(new_problem)
-        # db.commit()
-        # db.refresh(new_problem)
-
-        # # add record to "Answers" table
-        # new_answer = Answer(problem_id=new_problem.id, answer_content=raw_problem["answer"])
-        # db.add(new_answer)
-        # db.commit()
-        # db.refresh(new_answer)
-
-        # ans = []
-        # for i in range(request.amount):
-        #     ans.append({"question": "What is 2+3?", "answer": "5"})
-        # return {"batch": ans}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка генерации вопроса: {e}")
+# if __name__=="__main__":
+#     uvicorn.run("main:app", host="0.0.0.0", port=8000, ssl=ssl_context)
