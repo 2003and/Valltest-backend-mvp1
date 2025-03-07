@@ -35,7 +35,7 @@ app.add_middleware(
 )
 
 # Настройка базы данных
-DATABASE_URL = "sqlite:///./app/database_vault/test.db"
+DATABASE_URL = "sqlite:///./test.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 Base = declarative_base()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -82,7 +82,7 @@ class Problem(Base):
     __tablename__ = "problem"
     id = Column(Integer, primary_key=True, index=True)
     question = Column(String) # , unique=True, index=True
-    test_id = Column(Integer, ForeignKey("theme.id", ondelete="CASCADE"))
+    test_id = Column(Integer, ForeignKey("topic.id", ondelete="CASCADE"))
 
 
 class Answer(Base):
@@ -104,11 +104,31 @@ class UserAnswers(Base):
 # Модель для запроса и ответа
 # TODO: add more validation if needed
 class QuestionAutoGenerateRequest(BaseModel):
-    topic: str = "math"
+    topic: str = "integral"
+    subject: str = "math"
     difficulty: str = "easy" # Уровень сложности: easy, medium, hard
     amount: int = 10
     name: str = "untitled test"
 
+class AnswerModel(BaseModel):
+    value: str
+    is_correct: bool
+
+class ProblemModel(BaseModel):
+    question: str
+    answers: list[AnswerModel]
+
+class TestManualRequest(BaseModel):
+    name: str = "untitled test"
+    topic: str = "integral"
+    subject: str = "math"
+    difficulty: str = "easy" # Уровень сложности: easy, medium, hard
+    amount: int = 10
+    problems: list[ProblemModel]
+    #tags
+
+class TestRequest(BaseModel):
+    id: int = 1
 
 class QuestionFromTextRequest(BaseModel):
     text: str = "[your prompt here]"
@@ -315,6 +335,112 @@ async def add_answer(answer: AnswerRequest, token: str = Depends(token_auth_sche
 
 
 # Маршрут для генерации математических вопросов
+@app.post("/create_test_manually/")# , response_model=QuestionBatchResponse)
+async def create_test_manually(request: TestManualRequest):
+    db = SessionLocal()
+    # add record to "Test" table
+    new_test = Test(topic_id=1, #TODO: fetch topic from db
+                    name=request.name, 
+                    difficulty=request.difficulty, 
+                    test_time=10, # temporary magic number
+                    user_author_id=1) # TODO: figure out how to fetch user (i forgor)
+    db.add(new_test)
+    db.commit()
+    db.refresh(new_test)
+    
+    for problem in request.problems:
+        # add record to "Problem" table
+        new_problem = Problem(question=problem.question, test_id=new_test.id)
+        db.add(new_problem)
+        db.commit()
+        db.refresh(new_problem)
+        for answer in problem.answers:
+            # add record to "Answers" table
+            new_answer = Answer(problem_id=new_problem.id, answer_content=answer.value, is_correct=answer.is_correct)
+            db.add(new_answer)
+            db.commit()
+            db.refresh(new_answer)
+    
+    class TempModel(BaseModel):
+        test_id: int = new_test.id
+    return TempModel()
+
+# Маршрут для генерации математических вопросов
+@app.post("/api/create_test_manually/")# , response_model=QuestionBatchResponse)
+async def create_test_manually(request: TestManualRequest):
+    db = SessionLocal()
+    # add record to "Test" table
+    new_test = Test(topic_id=1, #TODO: fetch topic from db
+                    name=request.name, 
+                    difficulty=request.difficulty, 
+                    test_time=10, # temporary magic number
+                    user_author_id=1) # TODO: figure out how to fetch user (i forgor)
+    db.add(new_test)
+    db.commit()
+    db.refresh(new_test)
+    
+    for problem in request.problems:
+        # add record to "Problem" table
+        new_problem = Problem(question=problem.question, test_id=new_test.id)
+        db.add(new_problem)
+        db.commit()
+        db.refresh(new_problem)
+        for answer in problem.answers:
+            # add record to "Answers" table
+            new_answer = Answer(problem_id=new_problem.id, answer_content=answer.value, is_correct=answer.is_correct)
+            db.add(new_answer)
+            db.commit()
+            db.refresh(new_answer)
+
+    class TempModel(BaseModel):
+        test_id: int = new_test.id
+    return TempModel()
+
+
+# Маршрут для генерации математических вопросов
+@app.post("/api/generate_question/")# , response_model=QuestionBatchResponse)
+async def get_test(request: TestRequest):
+    # TODO: fetch test from DB by request.test_id
+    class TempTest(BaseModel):
+        testId: int = 1
+    new_test = TempTest()
+    return new_test
+
+# Маршрут для генерации математических вопросов
+@app.get("/get_test/")# , response_model=QuestionBatchResponse)
+async def get_test():#request: TestRequest):
+    # TODO: fetch test from DB by request.test_id
+    class TempAnswer(BaseModel):
+        value: str
+        is_correct: bool = False
+
+
+    class TempProblem(BaseModel):
+        question: str = "Какой язык программирования используется для веб-разработки?"
+        answers: list[TempAnswer] = [
+            TempAnswer(value="Python"),
+            TempAnswer(value="JavaScript", is_correct=True),
+            TempAnswer(value="Java"),
+            TempAnswer(value="C++"),
+        ]
+
+    class TempTestContent(BaseModel):
+        name: str = "Тест по веб-разработке"
+        problems: list[TempProblem] = [
+                            TempProblem(),
+                            TempProblem(),
+                            TempProblem(),
+                        ]
+    class TempTest(BaseModel):
+        test = TempTestContent()
+    
+    new_test = TempTest()
+    print(new_test)
+
+    return new_test
+
+
+# Маршрут для генерации математических вопросов
 @app.post("/generate_question/")# , response_model=QuestionBatchResponse)
 async def generate_question(request: QuestionAutoGenerateRequest):
     # TODO: add Test Name field and put it in the DB
@@ -379,7 +505,7 @@ async def generate_question(request: QuestionAutoGenerateRequest):
             "messages": [
                 {
                     "role": "user",
-                    "text": f"Сгенерируй вопрос по математике {request.difficulty} сложности и скажи ответ. " +
+                    "text": f"Сгенерируй вопрос по {request.subject} {request.difficulty} сложности и скажи ответ. " +
                             temp +
                             "Напиши \"Ответ:\" перед ответом и не пиши \"Вопрос:\" перед вопросом." +
                             "Не объясняй как ты получил ответ, просто скажи его" +
@@ -416,7 +542,7 @@ async def generate_question(request: QuestionAutoGenerateRequest):
             new_batch.append({"question": question.strip(), "answer": answer.strip()})
         
             # add record to "Problem" table
-            new_problem = Problem(theme_id=1, question=question.strip(), test_id=new_test.id)
+            new_problem = Problem(question=question.strip(), test_id=new_test.id)
             db.add(new_problem)
             db.commit()
             db.refresh(new_problem)
@@ -428,8 +554,9 @@ async def generate_question(request: QuestionAutoGenerateRequest):
             db.refresh(new_answer)
 
         print("returning")
-
-        return {"batch": new_batch}
+        print(new_batch)
+        # return {"batch": new_batch}
+        return new_test.id
 
         # raw_problem = {"question": "What is 2+3?", "answer": "5"}
 
@@ -516,7 +643,7 @@ async def generate_question(request: QuestionFromTextRequest):
             new_batch.append({"question": question.strip(), "answer": answer.strip()})
 
             # add record to "Problem" table
-            new_problem = Problem(theme_id=1, question=question.strip(), test_id=new_test.id)
+            new_problem = Problem(question=question.strip(), test_id=new_test.id)
             db.add(new_problem)
             db.commit()
             db.refresh(new_problem)
