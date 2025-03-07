@@ -45,6 +45,16 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # хз используется ли
 
 
+class Test(Base):
+    __tablename__ = "test"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    difficulty = Column(String)
+    topic_id = Column(Integer, ForeignKey("topic.id", ondelete="CASCADE"))
+    # creation_date = Column(String)
+    test_time = Column(Integer)
+    user_author_id = Column(String, ForeignKey("user.id", ondelete="CASCADE"))
+
 # Таблицы
 class User(Base):
     __tablename__ = "user"
@@ -71,9 +81,8 @@ class Topic(Base):
 class Problem(Base):
     __tablename__ = "problem"
     id = Column(Integer, primary_key=True, index=True)
-    raw_data = Column(String) # , unique=True, index=True
-    correct_answer = Column(Integer)
-    theme_id = Column(Integer, ForeignKey("theme.id", ondelete="CASCADE"))
+    question = Column(String) # , unique=True, index=True
+    test_id = Column(Integer, ForeignKey("theme.id", ondelete="CASCADE"))
 
 
 class Answer(Base):
@@ -81,6 +90,7 @@ class Answer(Base):
     id = Column(Integer, primary_key=True, index=True)
     problem_id = Column(Integer, ForeignKey("problem.id", ondelete="CASCADE"))
     answer_content = Column(String)
+    is_correct = Column(Integer)
 
 
 class UserAnswers(Base):
@@ -97,6 +107,7 @@ class QuestionAutoGenerateRequest(BaseModel):
     topic: str = "math"
     difficulty: str = "easy" # Уровень сложности: easy, medium, hard
     amount: int = 10
+    name: str = "untitled test"
 
 
 class QuestionFromTextRequest(BaseModel):
@@ -306,14 +317,36 @@ async def add_answer(answer: AnswerRequest, token: str = Depends(token_auth_sche
 # Маршрут для генерации математических вопросов
 @app.post("/generate_question/")# , response_model=QuestionBatchResponse)
 async def generate_question(request: QuestionAutoGenerateRequest):
-    # TODO: add Test Name field andput it in the DB
+    # TODO: add Test Name field and put it in the DB
     """
     Генерирует математический вопрос и ответ с использованием OpenAI API.
     """
     db = SessionLocal()
-    # TODO: make a different prompt for all difficulties (2D dict)
     # TODO: add fields in screenshot taken on March 3 2025
-    topics = {
+    prompts_presets = {
+        "easy": {
+                "integral": "Вопрос про интегралы, он должен быть либо про неопределённый интеграл, либо про определённый интеграл.",
+                "matrix": "Вопрос про матрицы, даны квадратные матрицы A и B, необходимо выполнить арифметические операции A+B, A-B или A*B. Ответом должен быть результат этой арифметической операции", # "Вопрос про матрицы, там должны быть сложение матриц, умножение матриц, нахождение определителя матрицы и решение системы уравнений по правилу крамера",
+                "pro": "Вопрос про производные, он должен быть про нахождение производной первого или второго порядка - 50\% шанс на кажудю", # derivatives
+                "vector": "Вопрос про вектора, он должен быть про математическую операцию с векторами: либо сложение, либо вычитание, либо скалярное умножение, либо векторное умножение",
+                "limit": "Вопрос про пределы, он должен быть про нахождение предела какой-либо функции",
+                },
+        "normal": {
+                "integral": "Вопрос про интегралы, он должен быть либо про неопределённый интеграл, либо про определённый интеграл.",
+                "matrix": "Вопрос про матрицы, даны квадратные матрицы A и B, необходимо выполнить арифметические операции A+B, A-B или A*B. Ответом должен быть результат этой арифметической операции", # "Вопрос про матрицы, там должны быть сложение матриц, умножение матриц, нахождение определителя матрицы и решение системы уравнений по правилу крамера",
+                "pro": "Вопрос про производные, он должен быть про нахождение производной первого или второго порядка - 50\% шанс на кажудю", # derivatives
+                "vector": "Вопрос про вектора, он должен быть про математическую операцию с векторами: либо сложение, либо вычитание, либо скалярное умножение, либо векторное умножение",
+                "limit": "Вопрос про пределы, он должен быть про нахождение предела какой-либо функции",
+                },
+        "hard": {
+                "integral": "Вопрос про интегралы, он должен быть либо про неопределённый интеграл, либо про определённый интеграл.",
+                "matrix": "Вопрос про матрицы, даны квадратные матрицы A и B, необходимо выполнить арифметические операции A+B, A-B или A*B. Ответом должен быть результат этой арифметической операции", # "Вопрос про матрицы, там должны быть сложение матриц, умножение матриц, нахождение определителя матрицы и решение системы уравнений по правилу крамера",
+                "pro": "Вопрос про производные, он должен быть про нахождение производной первого или второго порядка - 50\% шанс на кажудю", # derivatives
+                "vector": "Вопрос про вектора, он должен быть про математическую операцию с векторами: либо сложение, либо вычитание, либо скалярное умножение, либо векторное умножение",
+                "limit": "Вопрос про пределы, он должен быть про нахождение предела какой-либо функции",
+                },
+    }
+    default_prompts = {
         "integral": "Вопрос про интегралы, он должен быть либо про неопределённый интеграл, либо про определённый интеграл.",
         "matrix": "Вопрос про матрицы, даны квадратные матрицы A и B, необходимо выполнить арифметические операции A+B, A-B или A*B. Ответом должен быть результат этой арифметической операции", # "Вопрос про матрицы, там должны быть сложение матриц, умножение матриц, нахождение определителя матрицы и решение системы уравнений по правилу крамера",
         "pro": "Вопрос про производные, он должен быть про нахождение производной первого или второго порядка - 50\% шанс на кажудю", # derivatives
@@ -323,10 +356,19 @@ async def generate_question(request: QuestionAutoGenerateRequest):
     try:
         # TODO: rewrite prompt to generate a JSON
         new_batch = []
+        # add record to "Test" table
+        new_test = Test(topic_id=1, 
+                        name=request.name, 
+                        difficulty=request.difficulty, 
+                        test_time=10, # temporary magic number
+                        user_author_id=1) # TODO: figure out how to fetch user (i forgor)
+        db.add(new_test)
+        db.commit()
+        db.refresh(new_test)
         for i in range(request.amount):
-        #TODO: add a dictionary/json with specific prompts for specific topics
         #This prompt will only be used if a specific prompt wasn't found in the aformentioned json
-            temp = topics.get(request.topic.lower(), f"Тема вопроса - {request.topic}.")
+            temp = prompts_presets.get(request.difficulty.lower(), default_prompts).\
+                    get(request.topic.lower(), f"Тема вопроса - {request.topic}.")
             prompt = {
             "modelUri": "gpt://b1gefo1sef4nbt0kc8tb/yandexgpt-lite",
             "completionOptions": {
@@ -372,6 +414,19 @@ async def generate_question(request: QuestionAutoGenerateRequest):
             
             # Добавление вопроса в батч вопросов
             new_batch.append({"question": question.strip(), "answer": answer.strip()})
+        
+            # add record to "Problem" table
+            new_problem = Problem(theme_id=1, question=question.strip(), test_id=new_test.id)
+            db.add(new_problem)
+            db.commit()
+            db.refresh(new_problem)
+
+            # add record to "Answers" table
+            new_answer = Answer(problem_id=new_problem.id, answer_content=answer.strip, is_correct=1)
+            db.add(new_answer)
+            db.commit()
+            db.refresh(new_answer)
+
         print("returning")
 
         return {"batch": new_batch}
@@ -410,8 +465,16 @@ async def generate_question(request: QuestionFromTextRequest):
     try:
         # TODO: rewrite prompt to generate a JSON
         new_batch = []
+        # add record to "Test" table
+        new_test = Test(topic_id=1, 
+                        name="Autogenerated test", 
+                        difficulty="medium", 
+                        test_time=10, # temporary magic number
+                        user_author_id=1) # TODO: figure out how to fetch user (i forgor)
+        db.add(new_test)
+        db.commit()
+        db.refresh(new_test)
         for i in range(3): # Will be redundant - Ai decides how many questions are there needed
-        #TODO: add a dictionary/json with specific prompts for specific topics
         #This prompt will only be used if a specific prompt wasn't found in the aformentioned json
             prompt = {
             "modelUri": "gpt://b1gefo1sef4nbt0kc8tb/yandexgpt-lite",
@@ -451,7 +514,21 @@ async def generate_question(request: QuestionFromTextRequest):
             
             # Добавление вопроса в батч вопросов
             new_batch.append({"question": question.strip(), "answer": answer.strip()})
+
+            # add record to "Problem" table
+            new_problem = Problem(theme_id=1, question=question.strip(), test_id=new_test.id)
+            db.add(new_problem)
+            db.commit()
+            db.refresh(new_problem)
+
+            # add record to "Answers" table
+            new_answer = Answer(problem_id=new_problem.id, answer_content=answer.strip, is_correct=1)
+            db.add(new_answer)
+            db.commit()
+            db.refresh(new_answer)
         print("returning")
+
+
 
         return {"batch": new_batch}
 
