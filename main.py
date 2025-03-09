@@ -399,45 +399,74 @@ async def create_test_manually(request: TestManualRequest):
 
 # Маршрут для генерации математических вопросов
 @app.post("/api/generate_question/")# , response_model=QuestionBatchResponse)
-async def get_test(request: TestRequest):
+async def create_test(request: TestRequest):
     # TODO: fetch test from DB by request.test_id
     class TempTest(BaseModel):
         testId: int = 1
     new_test = TempTest()
     return new_test
 
+
+# Модель для ответа
+class TempAnswer(BaseModel):
+    value: str
+    is_correct: bool = False
+
+# Модель для вопроса
+class TempProblem(BaseModel):
+    question: str
+    answers: list[TempAnswer]
+
+# Модель для теста
+class TempTest(BaseModel):
+    name: str
+    problems: list[TempProblem]
+
+
+
+
+
+
 # Маршрут для генерации математических вопросов
-@app.get("/get_test/")# , response_model=QuestionBatchResponse)
-async def get_test():#request: TestRequest):
-    # TODO: fetch test from DB by request.test_id
-    class TempAnswer(BaseModel):
-        value: str
-        is_correct: bool = False
+@app.get("/get_test/{test_id}")
+async def get_test(test_id: int):
+    db = SessionLocal()
 
+    # Получаем тест из базы данных
+    test = db.query(Test).filter(Test.id == test_id).first()
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
 
-    class TempProblem(BaseModel):
-        question: str = "Какой язык программирования используется для веб-разработки?"
-        answers: list[TempAnswer] = [
-            TempAnswer(value="Python"),
-            TempAnswer(value="JavaScript", is_correct=True),
-            TempAnswer(value="Java"),
-            TempAnswer(value="C++"),
+    # Получаем все вопросы, связанные с этим тестом
+    problems = db.query(Problem).filter(Problem.test_id == test_id).all()
+
+    # Формируем список вопросов и ответов
+    test_problems = []
+    for problem in problems:
+        # Получаем все ответы для текущего вопроса
+        answers = db.query(Answer).filter(Answer.problem_id == problem.id).all()
+        
+        # Формируем список ответов
+        problem_answers = [
+            TempAnswer(value=answer.answer_content, is_correct=bool(answer.is_correct))
+            for answer in answers
         ]
 
-    class TempTestContent(BaseModel):
-        name: str = "Тест по веб-разработке"
-        problems: list[TempProblem] = [
-                            TempProblem(),
-                            TempProblem(),
-                            TempProblem(),
-                        ]
-    class TempTest(BaseModel):
-        test = TempTestContent()
-    
-    new_test = TempTest()
-    print(new_test)
+        # Добавляем вопрос и ответы в список
+        test_problems.append(
+            TempProblem(question=problem.question, answers=problem_answers)
+        )
 
-    return new_test
+    # Формируем финальный объект теста
+    test_data = TempTest(
+        name=test.name,
+        problems=test_problems
+    )
+
+    # Закрываем сессию базы данных
+    db.close()
+
+    return test_data
 
 
 # Маршрут для генерации математических вопросов
@@ -548,7 +577,7 @@ async def generate_question(request: QuestionAutoGenerateRequest):
             db.refresh(new_problem)
 
             # add record to "Answers" table
-            new_answer = Answer(problem_id=new_problem.id, answer_content=answer.strip, is_correct=1)
+            new_answer = Answer(problem_id=new_problem.id, answer_content=answer.strip(), is_correct=1)
             db.add(new_answer)
             db.commit()
             db.refresh(new_answer)
@@ -556,7 +585,13 @@ async def generate_question(request: QuestionAutoGenerateRequest):
         print("returning")
         print(new_batch)
         # return {"batch": new_batch}
-        return new_test.id
+        
+        class Temp(BaseModel): 
+            testId: int
+        
+        new_test = Temp(testId=new_test.id)
+
+        return new_test
 
         # raw_problem = {"question": "What is 2+3?", "answer": "5"}
 
@@ -649,7 +684,7 @@ async def generate_question(request: QuestionFromTextRequest):
             db.refresh(new_problem)
 
             # add record to "Answers" table
-            new_answer = Answer(problem_id=new_problem.id, answer_content=answer.strip, is_correct=1)
+            new_answer = Answer(problem_id=new_problem.id, answer_content=answer.strip(), is_correct=1)
             db.add(new_answer)
             db.commit()
             db.refresh(new_answer)
