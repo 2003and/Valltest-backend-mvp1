@@ -13,6 +13,8 @@ from typing import Optional
 import jwt
 from backend_secrets import *
 from fastapi.security import HTTPBearer
+from random import choice
+import re
 
 import requests
 
@@ -581,6 +583,22 @@ async def generate_question(request: QuestionAutoGenerateRequest):
             db.add(new_answer)
             db.commit()
             db.refresh(new_answer)
+
+            # generating wrong answers
+            numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+            for i in range(3):
+                wrong_answer = answer[:]
+                all_numbers_indexes = re.finditer("[0-9]", wrong_answer)
+
+                # mutating answer
+                for i in all_numbers_indexes:
+                    wrong_answer[i] = choice(numbers)
+
+                # writing answer to db
+                new_wrong_answer = Answer(problem_id=new_problem.id, answer_content=wrong_answer.strip(), is_correct=0)
+                db.add(new_wrong_answer)
+                db.commit()
+                db.refresh(new_wrong_answer)
 
         print("returning")
         print(new_batch)
