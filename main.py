@@ -19,7 +19,7 @@ import re
 import requests
 
 # Настройка FastAPI
-app = FastAPI(root_path="/api")
+app = FastAPI(root_path="")#"/api")
 
 origins = [
     "https://хост_на_фронт_в_яндексе",
@@ -585,14 +585,16 @@ async def generate_question(request: QuestionAutoGenerateRequest):
             db.refresh(new_answer)
 
             # generating wrong answers
-            numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+            numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
             for i in range(3):
                 wrong_answer = answer[:]
-                all_numbers_indexes = re.finditer("[0-9]", wrong_answer)
+                print("og wrong answer:", wrong_answer)
+                all_numbers_indexes = [i for i in range(len(wrong_answer)) if wrong_answer[i] in numbers]
 
                 # mutating answer
-                for i in all_numbers_indexes:
-                    wrong_answer[i] = choice(numbers)
+                for j in all_numbers_indexes:
+                    wrong_answer = wrong_answer[:j]+choice(numbers)+wrong_answer[j+1:]
+                print("new wrong answer:", wrong_answer)
 
                 # writing answer to db
                 new_wrong_answer = Answer(problem_id=new_problem.id, answer_content=wrong_answer.strip(), is_correct=0)
@@ -600,7 +602,11 @@ async def generate_question(request: QuestionAutoGenerateRequest):
                 db.commit()
                 db.refresh(new_wrong_answer)
 
-        print("returning")
+
+            print("Response:")
+            print(content)
+            print("= = = = = = =")
+        print("Final batch:")
         print(new_batch)
         # return {"batch": new_batch}
         
@@ -708,9 +714,16 @@ async def generate_question(request: QuestionFromTextRequest):
             db.refresh(new_answer)
         print("returning")
 
+        class TempQuestion(BaseModel):
+            question: str
 
+        class TempData(BaseModel):
+            data: list[TempQuestion]
 
-        return {"batch": new_batch}
+        data = TempData()
+        # TODO: return a list of questions
+        
+        return data
 
         # raw_problem = {"question": "What is 2+3?", "answer": "5"}
 
