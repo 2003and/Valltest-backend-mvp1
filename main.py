@@ -425,10 +425,6 @@ class TempTest(BaseModel):
     problems: list[TempProblem]
 
 
-
-
-
-
 # Маршрут для генерации математических вопросов
 @app.get("/get_test/{test_id}")
 async def get_test(test_id: int):
@@ -660,6 +656,8 @@ async def generate_question(request: QuestionFromTextRequest):
         db.add(new_test)
         db.commit()
         db.refresh(new_test)
+
+        new_question_batch = []
         for i in range(3): # Will be redundant - Ai decides how many questions are there needed
         #This prompt will only be used if a specific prompt wasn't found in the aformentioned json
             prompt = {
@@ -706,12 +704,31 @@ async def generate_question(request: QuestionFromTextRequest):
             db.add(new_problem)
             db.commit()
             db.refresh(new_problem)
+            new_question_batch.append(question.strip())
 
             # add record to "Answers" table
             new_answer = Answer(problem_id=new_problem.id, answer_content=answer.strip(), is_correct=1)
             db.add(new_answer)
             db.commit()
             db.refresh(new_answer)
+
+            # generating wrong answers
+            numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+            for i in range(3):
+                wrong_answer = answer[:]
+                print("og wrong answer:", wrong_answer)
+                all_numbers_indexes = [i for i in range(len(wrong_answer)) if wrong_answer[i] in numbers]
+
+                # mutating answer
+                for j in all_numbers_indexes:
+                    wrong_answer = wrong_answer[:j]+choice(numbers)+wrong_answer[j+1:]
+                print("new wrong answer:", wrong_answer)
+
+                # writing answer to db
+                new_wrong_answer = Answer(problem_id=new_problem.id, answer_content=wrong_answer.strip(), is_correct=0)
+                db.add(new_wrong_answer)
+                db.commit()
+                db.refresh(new_wrong_answer)
         print("returning")
 
         class TempQuestion(BaseModel):
@@ -720,8 +737,11 @@ async def generate_question(request: QuestionFromTextRequest):
         class TempData(BaseModel):
             data: list[TempQuestion]
 
-        data = TempData()
-        # TODO: return a list of questions
+        data = TempData(
+            data = [
+                TempQuestion(question=question) for question in new_question_batch
+            ]
+        )
         
         return data
 
