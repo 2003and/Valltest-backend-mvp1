@@ -13,13 +13,11 @@ from typing import Optional
 import jwt
 from backend_secrets import *
 from fastapi.security import HTTPBearer
-from random import choice
-import re
-
+import random
 import requests
 
 # Настройка FastAPI
-app = FastAPI(root_path="")#"/api")
+app = FastAPI(root_path="/api")
 
 origins = [
     "https://хост_на_фронт_в_яндексе",
@@ -342,14 +340,14 @@ async def create_test_manually(request: TestManualRequest):
     db = SessionLocal()
     # add record to "Test" table
     new_test = Test(topic_id=1, #TODO: fetch topic from db
-                    name=request.name, 
-                    difficulty=request.difficulty, 
+                    name=request.name,
+                    difficulty=request.difficulty,
                     test_time=10, # temporary magic number
                     user_author_id=1) # TODO: figure out how to fetch user (i forgor)
     db.add(new_test)
     db.commit()
     db.refresh(new_test)
-    
+
     for problem in request.problems:
         # add record to "Problem" table
         new_problem = Problem(question=problem.question, test_id=new_test.id)
@@ -362,7 +360,7 @@ async def create_test_manually(request: TestManualRequest):
             db.add(new_answer)
             db.commit()
             db.refresh(new_answer)
-    
+
     class TempModel(BaseModel):
         test_id: int = new_test.id
     return TempModel()
@@ -373,14 +371,14 @@ async def create_test_manually(request: TestManualRequest):
     db = SessionLocal()
     # add record to "Test" table
     new_test = Test(topic_id=1, #TODO: fetch topic from db
-                    name=request.name, 
-                    difficulty=request.difficulty, 
+                    name=request.name,
+                    difficulty=request.difficulty,
                     test_time=10, # temporary magic number
                     user_author_id=1) # TODO: figure out how to fetch user (i forgor)
     db.add(new_test)
     db.commit()
     db.refresh(new_test)
-    
+
     for problem in request.problems:
         # add record to "Problem" table
         new_problem = Problem(question=problem.question, test_id=new_test.id)
@@ -425,7 +423,6 @@ class TempTest(BaseModel):
     problems: list[TempProblem]
 
 
-# Маршрут для генерации математических вопросов
 @app.get("/get_test/{test_id}")
 async def get_test(test_id: int):
     db = SessionLocal()
@@ -443,7 +440,7 @@ async def get_test(test_id: int):
     for problem in problems:
         # Получаем все ответы для текущего вопроса
         answers = db.query(Answer).filter(Answer.problem_id == problem.id).all()
-        
+
         # Формируем список ответов
         problem_answers = [
             TempAnswer(value=answer.answer_content, is_correct=bool(answer.is_correct))
@@ -467,15 +464,18 @@ async def get_test(test_id: int):
     return test_data
 
 
+def generate_random():
+    random_value = random.randint(-10, 10)
+    return str(random_value)
+
+
 # Маршрут для генерации математических вопросов
 @app.post("/generate_question/")# , response_model=QuestionBatchResponse)
 async def generate_question(request: QuestionAutoGenerateRequest):
-    # TODO: add Test Name field and put it in the DB
     """
     Генерирует математический вопрос и ответ с использованием OpenAI API.
     """
     db = SessionLocal()
-    # TODO: add fields in screenshot taken on March 3 2025
     prompts_presets = {
         "easy": {
                 "integral": "Вопрос про интегралы, он должен быть либо про неопределённый интеграл, либо про определённый интеграл.",
@@ -510,9 +510,9 @@ async def generate_question(request: QuestionAutoGenerateRequest):
         # TODO: rewrite prompt to generate a JSON
         new_batch = []
         # add record to "Test" table
-        new_test = Test(topic_id=1, 
-                        name=request.name, 
-                        difficulty=request.difficulty, 
+        new_test = Test(topic_id=1,
+                        name=request.name,
+                        difficulty=request.difficulty,
                         test_time=10, # temporary magic number
                         user_author_id=1) # TODO: figure out how to fetch user (i forgor)
         db.add(new_test)
@@ -537,7 +537,9 @@ async def generate_question(request: QuestionAutoGenerateRequest):
                             "Напиши \"Ответ:\" перед ответом и не пиши \"Вопрос:\" перед вопросом." +
                             "Не объясняй как ты получил ответ, просто скажи его" +
                             "Используй случайные числа, не только 7 и 5, и не повторяйся" +
-                            "Пиши \"$$\" в начале и в конце формулы, чтобы её можно было обработать парсером LaTeX"
+                            "Пиши \"$$\" в начале и в конце формулы, чтобы её можно было обработать парсером LaTeX"+
+                            "Я запрещаю тебе писать решения. Если напишешь решение будет штраф, пиши исключительно правильный ответ"+
+                            "Не повторяй вопросы, все вопросы должны быть разные не должно быть одного и того же задания"
                             # "Напиши формулы вопроса и ответа в LaTeX"
 
                     }
@@ -564,10 +566,10 @@ async def generate_question(request: QuestionAutoGenerateRequest):
                  question, answer = content.replace("Вопрос: ", "").split("Ответ:")
             else:
                  raise HTTPException(status_code=500, detail="Не удалось извлечь ответ.")
-            
+
             # Добавление вопроса в батч вопросов
             new_batch.append({"question": question.strip(), "answer": answer.strip()})
-        
+
             # add record to "Problem" table
             new_problem = Problem(question=question.strip(), test_id=new_test.id)
             db.add(new_problem)
@@ -579,36 +581,26 @@ async def generate_question(request: QuestionAutoGenerateRequest):
             db.add(new_answer)
             db.commit()
             db.refresh(new_answer)
+            new_answer = Answer(problem_id=new_problem.id, answer_content=generate_random(), is_correct=0)
+            db.add(new_answer)
+            db.commit()
+            db.refresh(new_answer)
+            new_answer = Answer(problem_id=new_problem.id, answer_content=generate_random(), is_correct=0)
+            db.add(new_answer)
+            db.commit()
+            db.refresh(new_answer)
+            new_answer = Answer(problem_id=new_problem.id, answer_content=generate_random(), is_correct=0)
+            db.add(new_answer)
+            db.commit()
+            db.refresh(new_answer)
 
-            # generating wrong answers
-            numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
-            for i in range(3):
-                wrong_answer = answer[:]
-                print("og wrong answer:", wrong_answer)
-                all_numbers_indexes = [i for i in range(len(wrong_answer)) if wrong_answer[i] in numbers]
-
-                # mutating answer
-                for j in all_numbers_indexes:
-                    wrong_answer = wrong_answer[:j]+choice(numbers)+wrong_answer[j+1:]
-                print("new wrong answer:", wrong_answer)
-
-                # writing answer to db
-                new_wrong_answer = Answer(problem_id=new_problem.id, answer_content=wrong_answer.strip(), is_correct=0)
-                db.add(new_wrong_answer)
-                db.commit()
-                db.refresh(new_wrong_answer)
-
-
-            print("Response:")
-            print(content)
-            print("= = = = = = =")
-        print("Final batch:")
+        print("returning")
         print(new_batch)
         # return {"batch": new_batch}
-        
-        class Temp(BaseModel): 
+
+        class Temp(BaseModel):
             testId: int
-        
+
         new_test = Temp(testId=new_test.id)
 
         return new_test
@@ -635,6 +627,7 @@ async def generate_question(request: QuestionAutoGenerateRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка генерации вопроса: {e}")
+
 
 # Маршрут для генерации математических вопросов
 @app.post("/generate_question_from_text/")# , response_model=QuestionBatchResponse)
@@ -670,7 +663,8 @@ async def generate_question(request: QuestionFromTextRequest):
             "messages": [
                 {
                     "role": "user",
-                    "text": request.text, # TODO: generate 3 wrong answers and 1 correct answer
+                    "text": "Сгенерируй вопрос по тексту:" + \
+                        request.text,
                     }
                 ]
             }
@@ -692,12 +686,9 @@ async def generate_question(request: QuestionFromTextRequest):
 
             # Разделение на вопрос и ответ
             if "Ответ:" in content:
-                 question, answer = content.replace("Вопрос: ", "").split("Ответ:")
+                 question = content.replace("Вопрос: ", "")
             else:
                  raise HTTPException(status_code=500, detail="Не удалось извлечь ответ.")
-            
-            # Добавление вопроса в батч вопросов
-            new_batch.append({"question": question.strip(), "answer": answer.strip()})
 
             # add record to "Problem" table
             new_problem = Problem(question=question.strip(), test_id=new_test.id)
@@ -706,29 +697,6 @@ async def generate_question(request: QuestionFromTextRequest):
             db.refresh(new_problem)
             new_question_batch.append(question.strip())
 
-            # add record to "Answers" table
-            new_answer = Answer(problem_id=new_problem.id, answer_content=answer.strip(), is_correct=1)
-            db.add(new_answer)
-            db.commit()
-            db.refresh(new_answer)
-
-            # generating wrong answers
-            numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
-            for i in range(3):
-                wrong_answer = answer[:]
-                print("og wrong answer:", wrong_answer)
-                all_numbers_indexes = [i for i in range(len(wrong_answer)) if wrong_answer[i] in numbers]
-
-                # mutating answer
-                for j in all_numbers_indexes:
-                    wrong_answer = wrong_answer[:j]+choice(numbers)+wrong_answer[j+1:]
-                print("new wrong answer:", wrong_answer)
-
-                # writing answer to db
-                new_wrong_answer = Answer(problem_id=new_problem.id, answer_content=wrong_answer.strip(), is_correct=0)
-                db.add(new_wrong_answer)
-                db.commit()
-                db.refresh(new_wrong_answer)
         print("returning")
 
         class TempQuestion(BaseModel):
@@ -744,26 +712,6 @@ async def generate_question(request: QuestionFromTextRequest):
         )
         
         return data
-
-        # raw_problem = {"question": "What is 2+3?", "answer": "5"}
-
-        # TODO: implement adding to the table
-        # # add record to "Problem" table
-        # new_problem = Problem(theme_id=1, raw_data=raw_problem["question"], correct_answer=1)
-        # db.add(new_problem)
-        # db.commit()
-        # db.refresh(new_problem)
-
-        # # add record to "Answers" table
-        # new_answer = Answer(problem_id=new_problem.id, answer_content=raw_problem["answer"])
-        # db.add(new_answer)
-        # db.commit()
-        # db.refresh(new_answer)
-
-        # ans = []
-        # for i in range(request.amount):
-        #     ans.append({"question": "What is 2+3?", "answer": "5"})
-        # return {"batch": ans}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка генерации вопроса: {e}")
