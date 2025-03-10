@@ -631,7 +631,7 @@ async def generate_question(request: QuestionAutoGenerateRequest):
 
 # Маршрут для генерации математических вопросов
 @app.post("/generate_question_from_text/")# , response_model=QuestionBatchResponse)
-async def generate_question(request: QuestionFromTextRequest):
+async def generate_question_from_text(request: QuestionFromTextRequest):
     # TODO: add Test Name field andput it in the DB
     """
     Генерирует математический вопрос и ответ с использованием OpenAI API.
