@@ -44,7 +44,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # хз используется ли
 
-
+# Таблицы
 class Test(Base):
     __tablename__ = "test"
     id = Column(Integer, primary_key=True, index=True)
@@ -55,7 +55,14 @@ class Test(Base):
     test_time = Column(Integer)
     user_author_id = Column(String, ForeignKey("user.id", ondelete="CASCADE"))
 
-# Таблицы
+
+class TestPrompt(Base):
+    __tablename__ = "test_prompt"
+    id = Column(Integer, primary_key=True, index=True)
+    test_id = Column(Integer, ForeignKey("test.id", ondelete="CASCADE"))
+    prompt = Column(String)
+
+
 class User(Base):
     __tablename__ = "user"
     id = Column(Integer, primary_key=True, index=True)
@@ -407,25 +414,24 @@ async def create_test(request: TestRequest):
     return new_test
 
 
-# Модель для ответа
-class TempAnswer(BaseModel):
-    value: str
-    is_correct: bool = False
-
-# Модель для вопроса
-class TempProblem(BaseModel):
-    question: str
-    answers: list[TempAnswer]
-
-# Модель для теста
-class TempTest(BaseModel):
-    name: str
-    problems: list[TempProblem]
-
-
 @app.get("/get_test/{test_id}")
 async def get_test(test_id: int):
     db = SessionLocal()
+
+    # Модель для ответа
+    class TempAnswer(BaseModel):
+        value: str
+        is_correct: bool = False
+
+    # Модель для вопроса
+    class TempProblem(BaseModel):
+        question: str
+        answers: list[TempAnswer]
+
+    # Модель для теста
+    class TempTest(BaseModel):
+        name: str
+        problems: list[TempProblem]
 
     # Получаем тест из базы данных
     test = db.query(Test).filter(Test.id == test_id).first()
@@ -462,6 +468,48 @@ async def get_test(test_id: int):
     db.close()
 
     return test_data
+
+@app.get("/get_test_meta/{test_id}")
+async def get_test_meta(test_id: int):
+    db = SessionLocal()
+
+
+    #Модель для метаданных
+    class TestMeta(BaseModel):
+        Subject: str
+        Difficulty: str
+        Topic: str
+        Prompt: str
+
+    # Получаем тест из базы данных
+    test = db.query(Test).filter(Test.id == test_id).first()
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    test_topic = db.query(Topic).filter(Topic.id == test.topic_id).first()
+    if not test_topic:
+        test_topic = "Матрицы"
+    
+    test_subject = db.query(Subject).filter(Subject.id == test_topic.subject_id).first()
+    if not test_subject:
+        test_subject = "Математика"
+
+    test_prompt = db.query(TestPrompt).filter(TestPrompt.test_id == test_id).first()
+    if not test_prompt:
+        test_prompt = "blank prompt" #TODO: Уточнить, что возвращать в случае если промпт не найден (а его у нас не будет сейчас - таблицу с промптами я создал только что)
+    
+    # Формируем финальный объект теста
+    test_meta = TestMeta(
+        Subject=test_subject.name,
+        Difficulty=test.difficulty,
+        Topic=test_topic.name,
+        Prompt=test_prompt.prompt,
+    )
+
+    # Закрываем сессию базы данных
+    db.close()
+
+    return test_meta
 
 
 def generate_random():
@@ -685,10 +733,7 @@ async def generate_question_from_text(request: QuestionFromTextRequest):
             print(content)
 
             # Разделение на вопрос и ответ
-            if "Ответ:" in content:
-                 question = content.replace("Вопрос: ", "")
-            else:
-                 raise HTTPException(status_code=500, detail="Не удалось извлечь ответ.")
+            question = content.replace("Вопрос: ", "")
 
             # add record to "Problem" table
             new_problem = Problem(question=question.strip(), test_id=new_test.id)
