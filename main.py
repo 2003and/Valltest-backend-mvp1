@@ -16,6 +16,9 @@ from fastapi.security import HTTPBearer
 import random
 import requests
 
+# Импорт таблиц
+from schemas import *
+
 # Настройка FastAPI
 app = FastAPI(root_path="/api")
 
@@ -44,68 +47,6 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # хз используется ли
 
-# Таблицы
-class Test(Base):
-    __tablename__ = "test"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String)
-    difficulty = Column(String)
-    topic_id = Column(Integer, ForeignKey("topic.id", ondelete="CASCADE"))
-    # creation_date = Column(String)
-    test_time = Column(Integer)
-    user_author_id = Column(String, ForeignKey("user.id", ondelete="CASCADE"))
-
-
-class TestPrompt(Base):
-    __tablename__ = "test_prompt"
-    id = Column(Integer, primary_key=True, index=True)
-    test_id = Column(Integer, ForeignKey("test.id", ondelete="CASCADE"))
-    prompt = Column(String)
-
-
-class User(Base):
-    __tablename__ = "user"
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
-    # hashed_password = Column(String)
-    email = Column(String, unique=True)
-    # role = Column(String) #TODO: add roles and permissions functionality
-
-
-class Subject(Base):
-    __tablename__ = "subject"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True)
-
-
-class Topic(Base):
-    __tablename__ = "topic"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True)
-    subject_id = Column(Integer, ForeignKey("subject.id", ondelete="CASCADE"))
-
-
-class Problem(Base):
-    __tablename__ = "problem"
-    id = Column(Integer, primary_key=True, index=True)
-    question = Column(String) # , unique=True, index=True
-    test_id = Column(Integer, ForeignKey("topic.id", ondelete="CASCADE"))
-
-
-class Answer(Base):
-    __tablename__ = "answer"
-    id = Column(Integer, primary_key=True, index=True)
-    problem_id = Column(Integer, ForeignKey("problem.id", ondelete="CASCADE"))
-    answer_content = Column(String)
-    is_correct = Column(Integer)
-
-
-class UserAnswers(Base):
-    __tablename__ = "user_answers"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("user.id", ondelete="CASCADE"))
-    problem_id = Column(Integer, ForeignKey("problem.id", ondelete="CASCADE"))
-    answer_num = Column(Integer)
 
 
 # Модель для запроса и ответа
@@ -510,6 +451,76 @@ async def get_test_meta(test_id: int):
     db.close()
 
     return test_meta
+
+
+@app.get("/get_user_tests/{user_id}")
+async def get_user_tests(user_id: int):
+    db = SessionLocal()
+
+    #Модель для метаданных
+    class TestMeta(BaseModel):
+        Subject: str
+        Difficulty: str
+        Topic: str
+        Prompt: str
+
+    # Получаем тесты из базы данных
+    tests_raw = db.query(Test).filter(Test.user_author_id == user_id)
+    if not tests_raw:
+        raise HTTPException(status_code=404, detail="No tests were found")
+
+    # Модель для ответа
+    class TempAnswer(BaseModel):
+        value: str
+        is_correct: bool = False
+
+    # Модель для вопроса
+    class TempProblem(BaseModel):
+        question: str
+        answers: list[TempAnswer]
+
+    # Модель для теста
+    class TempTest(BaseModel):
+        name: str
+        problems: list[TempProblem]
+    
+    tests = []
+    for test in tests_raw:
+
+        # Получаем все вопросы, связанные с этим тестом
+        problems = db.query(Problem).filter(Problem.test_id == test.id).all()
+
+        # Формируем список вопросов и ответов
+        test_problems = []
+        for problem in problems:
+            # Получаем все ответы для текущего вопроса
+            answers = db.query(Answer).filter(Answer.problem_id == problem.id).all()
+
+            # Формируем список ответов
+            problem_answers = [
+                TempAnswer(value=answer.answer_content, is_correct=bool(answer.is_correct))
+                for answer in answers
+            ]
+
+            # Добавляем вопрос и ответы в список
+            test_problems.append(
+                TempProblem(question=problem.question, answers=problem_answers)
+            )
+
+        # Формируем финальный объект теста
+        test_data = TempTest(
+            name=test.name,
+            problems=test_problems
+        )
+        tests.append(test_data)
+
+    # Закрываем сессию базы данных
+    db.close()
+    class Response(BaseModel):
+        tests: list[TempTest]
+    
+    response = Response(tests = tests)
+    return response
 
 
 def generate_random():
