@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, Text
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -24,10 +24,10 @@ class TestPrompt(Base):
 
 class User(Base):
     __tablename__ = "user"
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
+    id = Column(Text, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
     # hashed_password = Column(String)
-    email = Column(String, unique=True)
+    email = Column(String, unique=True, nullable=False      )
     # role = Column(String) #TODO: add roles and permissions functionality
 
 

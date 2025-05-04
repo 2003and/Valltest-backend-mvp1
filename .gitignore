@@ -1,2 +1,3 @@
 backend_secrets.py
 __pycache__
+.venv
