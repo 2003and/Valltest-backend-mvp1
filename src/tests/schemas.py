@@ -15,7 +15,6 @@ class Test(Base):
     test_time = Column(Integer)
     user_author_id = Column(String, ForeignKey("user.id", ondelete="CASCADE"))
 
-
 class Problem(Base):
     __tablename__ = "problem"
     id = Column(Integer, primary_key=True, index=True)

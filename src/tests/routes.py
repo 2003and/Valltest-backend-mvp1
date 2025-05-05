@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Security
 from fastapi.security import SecurityScopes, HTTPAuthorizationCredentials, HTTPBearer
-
+import duckdb
 from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -427,168 +427,41 @@ def generate_random():
 
 
 # Маршрут для генерации математических вопросов
-@test_router.post("/generate_question/")# , response_model=QuestionBatchResponse)
-async def generate_question(request: QuestionAutoGenerateRequest):
-    """
-    Генерирует по ПАРАМЕТРАМ математический вопрос и ответ с использованием OpenAI API.
-    """
+# TODO : 1) ручка должна обращаться к task.db и искать по topic difficaltly все соответвующие задания 
+# TODO : 2) собирать рандомные задания по 4 штуки из всех что нашла 
+# TODO : 3) обрщаться к YandexGPT отдавая ей примеры и так же отдавая count также будет промт составить похожие задачи и решить их
+# TODO : 4) то что будет присылаться от gpt мы будем схрянять правльный ответ сохранять а после брать ответ и менять цифры и сохранять в другую переменную 
+# TODO : 5) правльный ответ не должен быть первым ( рандомно перемешать)
 
-    db = SessionLocal()
-    prompts_presets = {
-        "easy": {
-                "integral": "Вопрос про интегралы, он должен быть либо про неопределённый интеграл, либо про определённый интеграл.",
-                "matrix": "Вопрос про матрицы, даны квадратные матрицы A и B, необходимо выполнить арифметические операции A+B, A-B или A*B. Ответом должен быть результат этой арифметической операции", # "Вопрос про матрицы, там должны быть сложение матриц, умножение матриц, нахождение определителя матрицы и решение системы уравнений по правилу крамера",
-                "pro": "Вопрос про производные, он должен быть про нахождение производной первого или второго порядка - 50\% шанс на кажудю", # derivatives
-                "vector": "Вопрос про вектора, он должен быть про математическую операцию с векторами: либо сложение, либо вычитание, либо скалярное умножение, либо векторное умножение",
-                "limit": "Вопрос про пределы, он должен быть про нахождение предела какой-либо функции",
-                },
-        "normal": {
-                "integral": "Вопрос про интегралы, он должен быть либо про неопределённый интеграл, либо про определённый интеграл.",
-                "matrix": "Вопрос про матрицы, даны квадратные матрицы A и B, необходимо выполнить арифметические операции A+B, A-B или A*B. Ответом должен быть результат этой арифметической операции", # "Вопрос про матрицы, там должны быть сложение матриц, умножение матриц, нахождение определителя матрицы и решение системы уравнений по правилу крамера",
-                "pro": "Вопрос про производные, он должен быть про нахождение производной первого или второго порядка - 50\% шанс на кажудю", # derivatives
-                "vector": "Вопрос про вектора, он должен быть про математическую операцию с векторами: либо сложение, либо вычитание, либо скалярное умножение, либо векторное умножение",
-                "limit": "Вопрос про пределы, он должен быть про нахождение предела какой-либо функции",
-                },
-        "hard": {
-                "integral": "Вопрос про интегралы, он должен быть либо про неопределённый интеграл, либо про определённый интеграл.",
-                "matrix": "Вопрос про матрицы, даны квадратные матрицы A и B, необходимо выполнить арифметические операции A+B, A-B или A*B. Ответом должен быть результат этой арифметической операции", # "Вопрос про матрицы, там должны быть сложение матриц, умножение матриц, нахождение определителя матрицы и решение системы уравнений по правилу крамера",
-                "pro": "Вопрос про производные, он должен быть про нахождение производной первого или второго порядка - 50\% шанс на кажудю", # derivatives
-                "vector": "Вопрос про вектора, он должен быть про математическую операцию с векторами: либо сложение, либо вычитание, либо скалярное умножение, либо векторное умножение",
-                "limit": "Вопрос про пределы, он должен быть про нахождение предела какой-либо функции",
-                },
-    }
-    default_prompts = {
-        "integral": "Вопрос про интегралы, он должен быть либо про неопределённый интеграл, либо про определённый интеграл.",
-        "matrix": "Вопрос про матрицы, даны квадратные матрицы A и B, необходимо выполнить арифметические операции A+B, A-B или A*B. Ответом должен быть результат этой арифметической операции", # "Вопрос про матрицы, там должны быть сложение матриц, умножение матриц, нахождение определителя матрицы и решение системы уравнений по правилу крамера",
-        "pro": "Вопрос про производные, он должен быть про нахождение производной первого или второго порядка - 50\% шанс на кажудю", # derivatives
-        "vector": "Вопрос про вектора, он должен быть про математическую операцию с векторами: либо сложение, либо вычитание, либо скалярное умножение, либо векторное умножение",
-        "limit": "Вопрос про пределы, он должен быть про нахождение предела какой-либо функции",
-    }
+@test_router.post("/generate_math_quastion/")
+async def generate_math_quastion(request: QuestionAutoGenerateRequest):
     try:
-        # TODO: rewrite prompt to generate a JSON
-        new_batch = []
-        # add record to "Test" table
-        new_test = Test(topic_id=1,
-                        name=request.name,
-                        difficulty=request.difficulty,
-                        test_time=10, # temporary magic number
-                        user_author_id=1) # TODO: figure out how to fetch user (i forgor)
-        db.add(new_test)
-        db.commit()
-        db.refresh(new_test)
-        for i in range(request.amount):
-        #This prompt will only be used if a specific prompt wasn't found in the aformentioned json
-            temp = prompts_presets.get(request.difficulty.lower(), default_prompts).\
-                    get(request.topic.lower(), f"Тема вопроса - {request.topic}.")
-            prompt = {
-            "modelUri": "gpt://b1gefo1sef4nbt0kc8tb/yandexgpt-lite",
-            "completionOptions": {
-                "stream": False,
-                "temperature": 0.6,
-                # "maxTokens": "2000"
-            },
-            "messages": [
-                {
-                    "role": "user",
-                    "text": f"Сгенерируй вопрос по {request.subject} {request.difficulty} сложности и скажи ответ. " +
-                            temp +
-                            "Напиши \"Ответ:\" перед ответом и не пиши \"Вопрос:\" перед вопросом." +
-                            "Не объясняй как ты получил ответ, просто скажи его" +
-                            "Используй случайные числа, не только 7 и 5, и не повторяйся" +
-                            "Пиши \"$$\" в начале и в конце формулы, чтобы её можно было обработать парсером LaTeX"+
-                            "Я запрещаю тебе писать решения. Если напишешь решение будет штраф, пиши исключительно правильный ответ"+
-                            "Не повторяй вопросы, все вопросы должны быть разные не должно быть одного и того же задания"
-                            # "Напиши формулы вопроса и ответа в LaTeX"
+        conn = duckdb.connect("task.db")
 
-                    }
-                ]
-            }
-            print("Response generating....")
+        query = f"""
+        SELECT latex_example
+        FROM task
+        WHERE topic = ? AND difficulty = ? 
+        LIMIT ?
+"""
+        result = conn.execute( query,(request.topic, request.difficulty ))
 
-            # Запрос к YandexGPT
-            url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": "Api-Key AQVN3Gy8RXHx2J4ocgbGY47qr9UMigMSI2nwDJDF"
-            }
-            response = requests.post(url, headers=headers, json=prompt)
+        if not result:
 
-            # Извлечение ответа
-            print(f"Answer {i} parsing....")
-            content_raw = response.text
-            content = json.loads(content_raw)["result"]["alternatives"][0]["message"]["text"]
-            print(content)
-
-            # Разделение на вопрос и ответ
-            if "Ответ:" in content:
-                 question, answer = content.replace("Вопрос: ", "").split("Ответ:")
-            else:
-                 raise HTTPException(status_code=500, detail="Не удалось извлечь ответ.")
-
-            # Добавление вопроса в батч вопросов
-            new_batch.append({"question": question.strip(), "answer": answer.strip()})
-
-            # add record to "Problem" table
-            new_problem = Problem(question=question.strip(), test_id=new_test.id)
-            db.add(new_problem)
-            db.commit()
-            db.refresh(new_problem)
-
-            # add record to "Answers" table
-            new_answer = Answer(problem_id=new_problem.id, answer_content=answer.strip(), is_correct=1)
-            db.add(new_answer)
-            db.commit()
-            db.refresh(new_answer)
-            new_answer = Answer(problem_id=new_problem.id, answer_content=generate_random(), is_correct=0)
-            db.add(new_answer)
-            db.commit()
-            db.refresh(new_answer)
-            new_answer = Answer(problem_id=new_problem.id, answer_content=generate_random(), is_correct=0)
-            db.add(new_answer)
-            db.commit()
-            db.refresh(new_answer)
-            new_answer = Answer(problem_id=new_problem.id, answer_content=generate_random(), is_correct=0)
-            db.add(new_answer)
-            db.commit()
-            db.refresh(new_answer)
-
-        print("returning")
-        print(new_batch)
-        # return {"batch": new_batch}
-
-        class Temp(BaseModel):
-            testId: int
-
-        new_test = Temp(testId=new_test.id)
-
-        return new_test
-
-        """
-        Код внизу был нужен для проверки работы ручки без ожидания 
-        ответа нейросети
-        """
-        # raw_problem = {"question": "What is 2+3?", "answer": "5"}
-
-        # TODO: implement adding to the table
-        # # add record to "Problem" table
-        # new_problem = Problem(theme_id=1, raw_data=raw_problem["question"], correct_answer=1)
-        # db.add(new_problem)
-        # db.commit()
-        # db.refresh(new_problem)
-
-        # # add record to "Answers" table
-        # new_answer = Answer(problem_id=new_problem.id, answer_content=raw_problem["answer"])
-        # db.add(new_answer)
-        # db.commit()
-        # db.refresh(new_answer)
-
-        # ans = []
-        # for i in range(request.amount):
-        #     ans.append({"question": "What is 2+3?", "answer": "5"})
-        # return {"batch": ans}
-
+            raise HTTPException(status_code=404, detail="No matching questions found")
+        
+        return result 
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка генерации вопроса: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+
+
+
 
 
 # Маршрут для генерации математических вопросов
