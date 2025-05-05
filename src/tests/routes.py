@@ -427,37 +427,36 @@ def generate_random():
 
 
 # Маршрут для генерации математических вопросов
-# TODO : 1) ручка должна обращаться к task.db и искать по topic difficaltly все соответвующие задания 
+# TODO : 1) ручка должна обращаться к task.db и искать по topic difficaltly все соответвующие задания ✅
 # TODO : 2) собирать рандомные задания по 4 штуки из всех что нашла 
 # TODO : 3) обрщаться к YandexGPT отдавая ей примеры и так же отдавая count также будет промт составить похожие задачи и решить их
+# ----------------------------------------------------------------------
 # TODO : 4) то что будет присылаться от gpt мы будем схрянять правльный ответ сохранять а после брать ответ и менять цифры и сохранять в другую переменную 
 # TODO : 5) правльный ответ не должен быть первым ( рандомно перемешать)
 
 @test_router.post("/generate_math_quastion/")
 async def generate_math_quastion(request: QuestionAutoGenerateRequest):
+    print("Received:", request.topic, request.difficulty)
     try:
-        conn = duckdb.connect("tasks.db")
+        with  duckdb.connect("tasks.db") as conn:
         
-        query = """
-        SELECT latex_example
-        FROM tasks
-        WHERE topic = $1 AND difficulty = $2
-        """
-        
-        result = conn.execute(query, (request.topic, request.difficulty)).fetchall()
-        
-        if not result:
-            raise HTTPException(status_code=404, detail="No matching questions found")
-        
+            query = """
+            SELECT latex_example
+            FROM tasks.tasks
+            WHERE topic = 'matrix' AND difficulty = 'easy'
+            """
+            
+            result = conn.sql(query).fetchall()
 
-        questions = [item[0] for item in result]
-        
-        return {"questions": questions}
+            if not result:
+                raise HTTPException(status_code=404, detail="No matching questions found")
+
+            questions = [item[0] for item in result]
+
+            return {"questions": questions}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        conn.close()
 
 
 

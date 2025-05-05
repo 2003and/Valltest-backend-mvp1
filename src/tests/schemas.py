@@ -91,7 +91,7 @@ class TestRequest(BaseModel):
 
 # Модель для запроса и ответа
 class QuestionAutoGenerateRequest(BaseModel):
-    topic: str = "integral"
+    topic: str = "matrix"
     subject: str = "math"
     difficulty: str = "easy" # Уровень сложности: easy, medium, hard
     amount: int = 10
