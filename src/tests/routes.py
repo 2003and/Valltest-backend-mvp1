@@ -436,24 +436,28 @@ def generate_random():
 @test_router.post("/generate_math_quastion/")
 async def generate_math_quastion(request: QuestionAutoGenerateRequest):
     try:
-        conn = duckdb.connect("task.db")
-
-        query = f"""
+        conn = duckdb.connect("tasks.db")
+        
+        query = """
         SELECT latex_example
-        FROM task
-        WHERE topic = ? AND difficulty = ? 
-        LIMIT ?
-"""
-        result = conn.execute( query,(request.topic, request.difficulty ))
-
+        FROM tasks
+        WHERE topic = $1 AND difficulty = $2
+        """
+        
+        result = conn.execute(query, (request.topic, request.difficulty)).fetchall()
+        
         if not result:
-
             raise HTTPException(status_code=404, detail="No matching questions found")
         
-        return result 
+
+        questions = [item[0] for item in result]
+        
+        return {"questions": questions}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
 
 
 
