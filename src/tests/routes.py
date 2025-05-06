@@ -455,7 +455,7 @@ async def generate_math_quastion(request: QuestionAutoGenerateRequest):
                 {"text": item[0], "latex_example": item[1]}
                 for item in result
             ]
-            """
+            
             curr_question = random.choice(questions)
             print("Questions extracted")
             prompt = {
@@ -487,8 +487,8 @@ async def generate_math_quastion(request: QuestionAutoGenerateRequest):
             print(response)
             
             return {"response": response}
-            """
-            return {"questions": questions}
+            
+            # return {"questions": questions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

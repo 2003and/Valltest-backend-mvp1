@@ -1,18 +1,21 @@
 {
-                "modelUri": "gpt://b1gkpauiv531e6eopso5/yandexgpt",
-                "completionOptions": {
-                    "stream": false,
-                    "temperature": 0.6,
-                    "maxTokens": "2000",
-                    "reasoningOptions": {
-                        "mode": "DISABLED"
-                    }
-                },
-
-                "messages": [
-                    {
-                    "role": "user",
-                    "text": "Сгенерируй задания, похожие на 'Найти производную квадратной функции':'\\frac{d}{dx}(x^2 + 3x + 2)', и реши их, чтобы их было 10 штук"
-                    }
-                ]
-            }
+  "modelUri": "gpt://b1gefo1sef4nbt0kc8tb/yandexgpt",
+  "completionOptions": {
+    "stream": false,
+    "temperature": 0.6,
+    "maxTokens": "2000",
+    "reasoningOptions": {
+      "mode": "DISABLED"
+    }
+  },
+  "messages": [
+    {
+      "role": "system",
+      "text": "Найди ошибки в тексте и исправь их"
+    },
+    {
+      "role": "user",
+      "text": "Ламинат подойдет для укладке на кухне или в детской комнате – он не боиться влаги и механических повреждений благодаря защитному слою из облицованных меламиновых пленок толщиной 0,2 мм и обработанным воском замкам."
+    }
+  ]
+}
