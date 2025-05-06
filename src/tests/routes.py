@@ -440,10 +440,10 @@ async def generate_math_quastion(request: QuestionAutoGenerateRequest):
     try:
         with  duckdb.connect("tasks.db") as conn:
         
-            query = """
-            SELECT latex_example
+            query = f"""
+            SELECT text, latex_example
             FROM tasks.tasks
-            WHERE topic = 'matrix' AND difficulty = 'easy'
+            WHERE topic = {request.topic} AND difficulty = {request.difficulty}
             """
             
             result = conn.sql(query).fetchall()
@@ -451,7 +451,10 @@ async def generate_math_quastion(request: QuestionAutoGenerateRequest):
             if not result:
                 raise HTTPException(status_code=404, detail="No matching questions found")
 
-            questions = [item[0] for item in result]
+            questions = [
+                {"text": item[0], "latex_example": item[1]}
+                for item in result
+            ]
 
             return {"questions": questions}
         
