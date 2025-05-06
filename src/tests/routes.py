@@ -443,7 +443,7 @@ async def generate_math_quastion(request: QuestionAutoGenerateRequest):
             query = f"""
             SELECT text, latex_example
             FROM tasks.tasks
-            WHERE topic = {request.topic} AND difficulty = {request.difficulty}
+            WHERE topic = '{request.topic}' AND difficulty = '{request.difficulty}'
             """
             
             result = conn.sql(query).fetchall()
@@ -455,19 +455,42 @@ async def generate_math_quastion(request: QuestionAutoGenerateRequest):
                 {"text": item[0], "latex_example": item[1]}
                 for item in result
             ]
+            """
+            curr_question = random.choice(questions)
+            print("Questions extracted")
+            prompt = {
+                "modelUri": f"gpt://{CATALOG_ID}/yandexgpt",
+                "completionOptions": {
+                    "stream": False,
+                    "temperature": 0.6,
+                    "maxTokens": "2000",
+                    "reasoningOptions": {
+                        "mode": "DISABLED"
+                    }
+                },
 
+                "messages": [
+                    {
+                    "role": "user",
+                    "text": f"Сгенерируй задания, похожие на \"{curr_question["text"]}\":\"{random.choice(curr_question["latex_example"])}\", и реши их, чтобы их было {request.amount} штук"
+                    }
+                ]
+            }
+            url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {IAM_TOKEN}"
+            }
+            print("Prompts formed")
+            response = requests.post(url, headers=headers, json=prompt)
+            print("Response received:")
+            print(response)
+            
+            return {"response": response}
+            """
             return {"questions": questions}
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-
-
-
-
-
-
 
 
 # Маршрут для генерации математических вопросов
