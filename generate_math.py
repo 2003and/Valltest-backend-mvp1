@@ -36,9 +36,12 @@
 
 
 from __future__ import annotations
+import duckdb
 from yandex_cloud_ml_sdk import YCloudML
 from fastapi import HTTPException
 from typing import List, Dict
+from backend_secrets import CATALOG_ID, YANDEXGPT_SECRET_KEY
+from src.tests.routes import QuestionAutoGenerateRequest, test_router
 
 def generate_questions_with_ai(topic: str, difficulty: str, amount: int, db_questions: List[Dict]) -> str:
     messages = [
@@ -66,8 +69,8 @@ def generate_questions_with_ai(topic: str, difficulty: str, amount: int, db_ques
     ]
 
     sdk = YCloudML(
-        folder_id="<идентификатор_каталога>",
-        auth="<API-ключ>",
+        folder_id=CATALOG_ID,
+        auth=YANDEXGPT_SECRET_KEY,
     )
 
     try:

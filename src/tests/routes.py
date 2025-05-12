@@ -1,3 +1,4 @@
+from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Depends, status, Security
 from fastapi.security import SecurityScopes, HTTPAuthorizationCredentials, HTTPBearer
 import duckdb
@@ -5,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from typing import Optional
+from yandex_cloud_ml_sdk import YCloudML
 
 import requests
 # import aiohttp
@@ -294,6 +296,7 @@ async def get_test(test_id: int):
 
     return test_data
 
+
 @test_router.get("/get_test_meta/{test_id}")
 async def get_test_meta(test_id: int):
     """
@@ -425,6 +428,16 @@ def generate_random():
     random_value = random.randint(-10, 10)
     return str(random_value)
 
+def shuffle_numbers(s):
+    NUMBERS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+    result = ""
+    for i in range(len(s)):
+        if s[i] in NUMBERS:
+            result += random.choice(NUMBERS)
+        else:
+            result += s[i]
+
+    return result
 
 # Маршрут для генерации математических вопросов
 # TODO : 1) ручка должна обращаться к task.db и искать по topic difficaltly все соответвующие задания ✅
@@ -456,37 +469,67 @@ async def generate_math_quastion(request: QuestionAutoGenerateRequest):
                 for item in result
             ]
             
-            curr_question = random.choice(questions)
             print("Questions extracted")
-            prompt = {
-                "modelUri": f"gpt://{CATALOG_ID}/yandexgpt",
-                "completionOptions": {
-                    "stream": False,
-                    "temperature": 0.6,
-                    "maxTokens": "2000",
-                    "reasoningOptions": {
-                        "mode": "DISABLED"
-                    }
-                },
-
-                "messages": [
-                    {
-                    "role": "user",
-                    "text": f"Сгенерируй задания, похожие на \"{curr_question["text"]}\":\"{random.choice(curr_question["latex_example"])}\", и реши их, чтобы их было {request.amount} штук"
-                    }
-                ]
-            }
-            url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {IAM_TOKEN}"
-            }
+            curr_question = random.choice(questions)
+            messages = [
+                {
+                "role": "user",
+                "text": f"""Сгенерируй {request.amount} заданий, похожие на \"{curr_question["text"]}\":\"{random.choice(curr_question["latex_example"])}\", 
+                и напиши правильные ответы на них (без решения) сразу после вопроса, вместо того чтобы сваливать все ответы в кучу после всех вопросов. 
+                Перед каждым новым вопросом обязательно напиши \"💀\", и не пиши его перед ответом"""
+                }
+            ]
             print("Prompts formed")
-            response = requests.post(url, headers=headers, json=prompt)
-            print("Response received:")
-            print(response)
+
+            sdk = YCloudML(
+                folder_id=CATALOG_ID,
+                auth=YANDEXGPT_SECRET_KEY,
+            )
+
+            response = (
+                sdk.models.completions("yandexgpt").configure(temperature=0.5, max_tokens=2000).run(messages)
+            )
+            print("Response received")
+
+            # Модель для ответа
+            class TempAnswer(BaseModel):
+                value: str
+                is_correct: bool = False
+
+            # Модель для вопроса
+            class TempProblem(BaseModel):
+                question: str
+                answers: list[TempAnswer]
+
+            # Достали текст ответа нейронки
+            result = response.alternatives[0].text
+            print("Raw:", result)
+            # Разбили текст ответа на отдельные строки с вопросами и ответами
+            if result[0] == "💀":
+                result = result[1:]
+            print("Prepared", result)
+            result = result.split("💀")
+            problems = []
+            print("After split:", result)
+            for problem_raw in result:
+                problem_raw = problem_raw.split("Ответ:")
+                print(problem_raw)
+
+                answers = []
+                corr_answer = TempAnswer(value=problem_raw[1], is_correct=True)
+                answers.append(corr_answer)
+                print("Correct answer added")
+                for i in range(3):
+                    incorr_answer = TempAnswer(value=shuffle_numbers(problem_raw[1]))
+                    answers.append(incorr_answer)
+                    print(f"Inorrect answer №{i} added")
+                random.shuffle(answers)
+                problem = TempProblem(question=problem_raw[0], answers=answers)
+                print("Problem formed")
+
+                problems.append(problem)
             
-            return {"response": response}
+            return {"response": problems}
             
             # return {"questions": questions}
     except Exception as e:
