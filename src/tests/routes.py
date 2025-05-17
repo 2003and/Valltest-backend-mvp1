@@ -132,7 +132,7 @@ async def create_test_manually(request: TestManualRequest):
     db = SessionLocal()
     # add record to "Test" table
     new_test = Test(topic_id=1, #TODO: fetch topic from db
-                    name=request.name,
+                    name=request.testName,
                     difficulty=request.difficulty,
                     test_time=10, # temporary magic number
                     user_author_id=1) # TODO: figure out how to fetch user (i forgor)
@@ -142,13 +142,13 @@ async def create_test_manually(request: TestManualRequest):
 
     for problem in request.problems:
         # add record to "Problem" table
-        new_problem = Problem(question=problem.question, test_id=new_test.id)
+        new_problem = Problem(question=problem.problem, test_id=new_test.id)
         db.add(new_problem)
         db.commit()
         db.refresh(new_problem)
         for answer in problem.answers:
             # add record to "Answers" table
-            new_answer = Answer(problem_id=new_problem.id, answer_content=answer.value, is_correct=answer.is_correct)
+            new_answer = Answer(problem_id=new_problem.id, answer_content=answer.answer, is_correct=answer.isCorrect)
             db.add(new_answer)
             db.commit()
             db.refresh(new_answer)
@@ -445,7 +445,7 @@ def shuffle_numbers(s):
 # TODO : 3) обрщаться к YandexGPT отдавая ей примеры и так же отдавая count также будет промт составить похожие задачи и решить их
 # ----------------------------------------------------------------------
 # TODO : 4) то что будет присылаться от gpt мы будем схрянять правльный ответ сохранять а после брать ответ и менять цифры и сохранять в другую переменную 
-# TODO : 5) правльный ответ не должен быть первым ( рандомно перемешать)
+# TODO : 5) правльный ответ не должен быть первым (рандомно перемешать)
 
 @test_router.post("/generate_math_quastion/")
 async def generate_math_quastion(request: QuestionAutoGenerateRequest):

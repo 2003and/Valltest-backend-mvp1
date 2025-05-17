@@ -67,15 +67,15 @@ class User(Base):
 
 # Validators
 class AnswerModel(BaseModel):
-    value: str
-    is_correct: bool
+    answer: str
+    isCorrect: bool
 
 class ProblemModel(BaseModel):
-    question: str
+    problem: str
     answers: list[AnswerModel]
 
 class TestManualRequest(BaseModel):
-    name: str = "untitled test"
+    testName: str = "untitled test"
     topic: str = "integral"
     subject: str = "math"
     difficulty: str = "easy" # Уровень сложности: easy, medium, hard
