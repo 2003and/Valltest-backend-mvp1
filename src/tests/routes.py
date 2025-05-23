@@ -257,6 +257,7 @@ async def get_test(test_id: int):
 
     # Модель для теста
     class TempTest(BaseModel):
+        testId: int
         name: str
         problems: list[TempProblem]
 
@@ -287,6 +288,7 @@ async def get_test(test_id: int):
 
     # Формируем финальный объект теста
     test_data = TempTest(
+        testId=test.id,
         name=test.name,
         problems=test_problems
     )
@@ -452,7 +454,18 @@ async def generate_math_quastion(request: QuestionAutoGenerateRequest):
     print("Received:", request.topic, request.difficulty)
     try:
         with  duckdb.connect("tasks.db") as conn:
-        
+         
+            db = SessionLocal()
+            # add record to "Test" table
+            new_test = Test(topic_id=1, #TODO: fetch topic from db
+                            name=request.testName,
+                            difficulty=request.difficulty,
+                            test_time=10, # temporary magic number
+                            user_author_id=1) # TODO: figure out how to fetch user (i forgor)
+            db.add(new_test)
+            db.commit()
+            db.refresh(new_test)
+
             query = f"""
             SELECT text, latex_example
             FROM tasks.tasks
@@ -493,6 +506,7 @@ async def generate_math_quastion(request: QuestionAutoGenerateRequest):
 
             # Модель для ответа
             class TempAnswer(BaseModel):
+                id: int = 0
                 value: str
                 is_correct: bool = False
 
@@ -518,16 +532,28 @@ async def generate_math_quastion(request: QuestionAutoGenerateRequest):
                 answers = []
                 corr_answer = TempAnswer(value=problem_raw[1], is_correct=True)
                 answers.append(corr_answer)
-                print("Correct answer added")
                 for i in range(3):
                     incorr_answer = TempAnswer(value=shuffle_numbers(problem_raw[1]))
                     answers.append(incorr_answer)
-                    print(f"Inorrect answer №{i} added")
                 random.shuffle(answers)
+
                 problem = TempProblem(question=problem_raw[0], answers=answers)
+
+                new_problem = Problem(question=problem_raw[0], test_id=new_test.id)
+                db.add(new_problem)
+                db.commit()
+                db.refresh(new_problem)
+                for answer in answers:
+                    # add record to "Answers" table
+                    new_answer = Answer(problem_id=new_problem.id, answer_content=answer.value, is_correct=answer.is_correct)
+                    db.add(new_answer)
+                    db.commit()
+                    db.refresh(new_answer)
+                    answer.id = new_answer.id
                 print("Problem formed")
 
                 problems.append(problem)
+            
             
             return {"response": problems}
             
@@ -620,7 +646,7 @@ async def generate_question_from_text(request: QuestionFromTextRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка генерации вопроса: {e}")
-    
+
 
 auth = VerifyToken()
 

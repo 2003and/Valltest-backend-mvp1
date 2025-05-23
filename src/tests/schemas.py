@@ -91,11 +91,11 @@ class TestRequest(BaseModel):
 
 # Модель для запроса и ответа
 class QuestionAutoGenerateRequest(BaseModel):
-    topic: str = "pro"
+    testName: str = "untitled test"
+    topic: str = "integral"
     subject: str = "math"
     difficulty: str = "easy" # Уровень сложности: easy, medium, hard
     amount: int = 10
-    name: str = "untitled test"
 
 class QuestionFromTextRequest(BaseModel):
     text: str = "[your prompt here]"
