@@ -247,18 +247,18 @@ async def get_test(test_id: int):
 
     # Модель для ответа
     class TempAnswer(BaseModel):
-        value: str
-        is_correct: bool = False
+        answer: str
+        isCorrect: bool = False
 
     # Модель для вопроса
     class TempProblem(BaseModel):
-        question: str
+        problem: str
         answers: list[TempAnswer]
 
     # Модель для теста
     class TempTest(BaseModel):
         testId: int
-        name: str
+        testName: str
         problems: list[TempProblem]
 
     # Получаем тест из базы данных
@@ -277,19 +277,19 @@ async def get_test(test_id: int):
 
         # Формируем список ответов
         problem_answers = [
-            TempAnswer(value=answer.answer_content, is_correct=bool(answer.is_correct))
+            TempAnswer(answer=answer.answer_content, isCorrect=bool(answer.is_correct))
             for answer in answers
         ]
 
         # Добавляем вопрос и ответы в список
         test_problems.append(
-            TempProblem(question=problem.question, answers=problem_answers)
+            TempProblem(problem=problem.question, answers=problem_answers)
         )
 
     # Формируем финальный объект теста
     test_data = TempTest(
         testId=test.id,
-        name=test.name,
+        testName=test.name,
         problems=test_problems
     )
 
@@ -454,7 +454,7 @@ async def generate_math_quastion(request: QuestionAutoGenerateRequest):
     print("Received:", request.topic, request.difficulty)
     try:
         with  duckdb.connect("tasks.db") as conn:
-         
+        
             db = SessionLocal()
             # add record to "Test" table
             new_test = Test(topic_id=1, #TODO: fetch topic from db
@@ -465,6 +465,24 @@ async def generate_math_quastion(request: QuestionAutoGenerateRequest):
             db.add(new_test)
             db.commit()
             db.refresh(new_test)
+
+            if request.topic.lower() == "матрицы":
+                request.topic = "matrix"
+            if request.topic.lower() == "интегралы":
+                request.topic = "integral"
+            if request.topic.lower() == "производные":
+                request.topic = "pro"
+            if request.topic.lower() == "пределы":
+                request.topic = "limit"
+            if request.topic.lower() == "векторы":
+                request.topic = "vector"
+            
+            if request.difficulty.lower() == "легкий":
+                request.difficulty = "easy"
+            if request.difficulty.lower() == "средний":
+                request.difficulty = "medium"
+            if request.difficulty.lower() == "сложный":
+                request.difficulty = "hard"
 
             query = f"""
             SELECT text, latex_example
@@ -487,7 +505,7 @@ async def generate_math_quastion(request: QuestionAutoGenerateRequest):
             messages = [
                 {
                 "role": "user",
-                "text": f"""Сгенерируй {request.amount} заданий, похожие на \"{curr_question["text"]}\":\"{random.choice(curr_question["latex_example"])}\", 
+                "text": f"""Сгенерируй {request.questionsCount} заданий, похожие на \"{curr_question["text"]}\":\"{random.choice(curr_question["latex_example"])}\", 
                 и напиши правильные ответы на них (без решения) сразу после вопроса, вместо того чтобы сваливать все ответы в кучу после всех вопросов. 
                 Перед каждым новым вопросом обязательно напиши \"💀\", и не пиши его перед ответом"""
                 }
@@ -515,6 +533,12 @@ async def generate_math_quastion(request: QuestionAutoGenerateRequest):
                 question: str
                 answers: list[TempAnswer]
 
+            class TempTest(BaseModel):
+                testName: str
+                topic: str
+                difficulty : str
+                problems: list[TempProblem]
+            
             # Достали текст ответа нейронки
             result = response.alternatives[0].text
             print("Raw:", result)
@@ -549,13 +573,13 @@ async def generate_math_quastion(request: QuestionAutoGenerateRequest):
                     db.add(new_answer)
                     db.commit()
                     db.refresh(new_answer)
-                    answer.id = new_answer.id
+                    # answer.id = new_answer.id
                 print("Problem formed")
 
                 problems.append(problem)
             
             
-            return {"response": problems}
+            return {"test_id": new_test.id} # problems}
             
             # return {"questions": questions}
     except Exception as e:

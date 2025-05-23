@@ -95,7 +95,7 @@ class QuestionAutoGenerateRequest(BaseModel):
     topic: str = "integral"
     subject: str = "math"
     difficulty: str = "easy" # Уровень сложности: easy, medium, hard
-    amount: int = 10
+    questionsCount: str = "10"
 
 class QuestionFromTextRequest(BaseModel):
     text: str = "[your prompt here]"
