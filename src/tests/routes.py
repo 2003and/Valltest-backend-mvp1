@@ -238,8 +238,8 @@ async def create_test(request: TestRequest):
     return new_test
 
 
-@test_router.get("/get_test/{test_id}")
-async def get_test(test_id: int):
+@test_router.get("/get_draft_test/{test_id}")
+async def get_draft_test(test_id: int):
     """
     Получает тест из базы данных под номером {test_id}
     """
@@ -250,61 +250,76 @@ async def get_test(test_id: int):
     class TempAnswer(BaseModel):
         answer: str
         isCorrect: bool = False
-
-    class TempAnswerObscure(BaseModel):
-        id: int
-        value: str
     
     # Модель для вопроса
     class TempProblem(BaseModel):
         problem: str
         answers: list[TempAnswer]
-    
-    class TempProblemObscure(BaseModel):
-        question: str
-        answers: list[TempAnswerObscure]
 
     # Модель для теста
     class TempTest(BaseModel):
         testId: int
         testName: str
         problems: list[TempProblem]
+
+    # Получаем тест из базы данных
+    test = db.query(Test).filter(Test.id == test_id).first()
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    # Получаем все вопросы, связанные с этим тестом
+    problems = db.query(Problem).filter(Problem.test_id == test_id).all()
+
+    # Формируем список вопросов и ответов
+    test_problems = []
+    for problem in problems:
+        # Получаем все ответы для текущего вопроса
+        answers = db.query(Answer).filter(Answer.problem_id == problem.id).all()
+
+        # Формируем список ответов
+        problem_answers = [
+            TempAnswer(answer=answer.answer_content, isCorrect=bool(answer.is_correct))
+            for answer in answers
+        ]
+
+        # Добавляем вопрос и ответы в список
+        test_problems.append(
+            TempProblem(problem=problem.question, answers=problem_answers)
+        )
+
+    # Формируем финальный объект теста
+    test_data = TempTest(
+        testId=test.id,
+        testName=test.name,
+        problems=test_problems
+    )
+
+    return test_data
+
+@test_router.get("/get_test/{test_id}")
+async def get_test(test_id: int):
+    """
+    Получает тест из базы данных под номером {test_id}
+    """
+
+    db = SessionLocal()
+
+    # Модель для ответа
+    class TempAnswerObscure(BaseModel):
+        id: int
+        value: str
     
+    # Модель для вопроса
+    
+    class TempProblemObscure(BaseModel):
+        question: str
+        answers: list[TempAnswerObscure]
+
+    # Модель для теста    
     class TempTestNoId(BaseModel):
         testName: str
         problems: list[TempProblemObscure]
 
-    # # Получаем тест из базы данных
-    # test = db.query(Test).filter(Test.id == test_id).first()
-    # if not test:
-    #     raise HTTPException(status_code=404, detail="Test not found")
-
-    # # Получаем все вопросы, связанные с этим тестом
-    # problems = db.query(Problem).filter(Problem.test_id == test_id).all()
-
-    # # Формируем список вопросов и ответов
-    # test_problems = []
-    # for problem in problems:
-    #     # Получаем все ответы для текущего вопроса
-    #     answers = db.query(Answer).filter(Answer.problem_id == problem.id).all()
-
-    #     # Формируем список ответов
-    #     problem_answers = [
-    #         TempAnswer(answer=answer.answer_content, isCorrect=bool(answer.is_correct))
-    #         for answer in answers
-    #     ]
-
-    #     # Добавляем вопрос и ответы в список
-    #     test_problems.append(
-    #         TempProblem(problem=problem.question, answers=problem_answers)
-    #     )
-
-    # # Формируем финальный объект теста
-    # test_data = TempTest(
-    #     testId=test.id,
-    #     testName=test.name,
-    #     problems=test_problems
-    # )
 
     test = db.query(Test).filter(Test.id == test_id).first()
     if not test:
@@ -622,7 +637,7 @@ async def generate_math_quastion(request: QuestionAutoGenerateRequest):
                 problems.append(problem)
             
             
-            return {"test_id": new_test.id} # problems}
+            return {"testId": new_test.id} # problems}
             
             # return {"questions": questions}
     except Exception as e:
