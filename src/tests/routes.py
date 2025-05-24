@@ -154,7 +154,8 @@ async def create_test_manually(request: TestManualRequest):
             db.refresh(new_answer)
 
     class TempModel(BaseModel):
-        test_id: int = new_test.id
+        testId: int = new_test.id
+
     return TempModel()
 
 
@@ -250,18 +251,61 @@ async def get_test(test_id: int):
         answer: str
         isCorrect: bool = False
 
+    class TempAnswerObscure(BaseModel):
+        id: int
+        value: str
+    
     # Модель для вопроса
     class TempProblem(BaseModel):
         problem: str
         answers: list[TempAnswer]
+    
+    class TempProblemObscure(BaseModel):
+        question: str
+        answers: list[TempAnswerObscure]
 
     # Модель для теста
     class TempTest(BaseModel):
         testId: int
         testName: str
         problems: list[TempProblem]
+    
+    class TempTestNoId(BaseModel):
+        testName: str
+        problems: list[TempProblemObscure]
 
-    # Получаем тест из базы данных
+    # # Получаем тест из базы данных
+    # test = db.query(Test).filter(Test.id == test_id).first()
+    # if not test:
+    #     raise HTTPException(status_code=404, detail="Test not found")
+
+    # # Получаем все вопросы, связанные с этим тестом
+    # problems = db.query(Problem).filter(Problem.test_id == test_id).all()
+
+    # # Формируем список вопросов и ответов
+    # test_problems = []
+    # for problem in problems:
+    #     # Получаем все ответы для текущего вопроса
+    #     answers = db.query(Answer).filter(Answer.problem_id == problem.id).all()
+
+    #     # Формируем список ответов
+    #     problem_answers = [
+    #         TempAnswer(answer=answer.answer_content, isCorrect=bool(answer.is_correct))
+    #         for answer in answers
+    #     ]
+
+    #     # Добавляем вопрос и ответы в список
+    #     test_problems.append(
+    #         TempProblem(problem=problem.question, answers=problem_answers)
+    #     )
+
+    # # Формируем финальный объект теста
+    # test_data = TempTest(
+    #     testId=test.id,
+    #     testName=test.name,
+    #     problems=test_problems
+    # )
+
     test = db.query(Test).filter(Test.id == test_id).first()
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
@@ -277,18 +321,17 @@ async def get_test(test_id: int):
 
         # Формируем список ответов
         problem_answers = [
-            TempAnswer(answer=answer.answer_content, isCorrect=bool(answer.is_correct))
+            TempAnswerObscure(value=answer.answer_content, id=answer.id)
             for answer in answers
         ]
 
         # Добавляем вопрос и ответы в список
         test_problems.append(
-            TempProblem(problem=problem.question, answers=problem_answers)
+            TempProblemObscure(question=problem.question, answers=problem_answers)
         )
 
     # Формируем финальный объект теста
-    test_data = TempTest(
-        testId=test.id,
+    test_data = TempTestNoId(
         testName=test.name,
         problems=test_problems
     )
@@ -670,6 +713,33 @@ async def generate_question_from_text(request: QuestionFromTextRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка генерации вопроса: {e}")
+
+
+@test_router.post('/get_correct_answers_amount/{testId}')
+async def get_correct_answers_amount(
+    testId: int,
+    request: GetCorrectAnswersAmountRequest
+):
+    db = SessionLocal()
+    correct_answer_count = 0
+
+    # Получаем список ID ответов из запроса
+    answer_ids = [answer.answerId for answer in request.answers]
+
+    # Делаем запрос к БД на получение этих ответов
+    answers = db.query(Answer).filter(Answer.id.in_(answer_ids)).all()
+
+    # Считаем количество правильных
+    correct_answer_count = sum(1 for answer in answers if answer.is_correct)
+
+    class ResultModel(BaseModel):
+        score: int
+        total: int
+    
+    result = ResultModel(score=correct_answer_count, total=len(answer_ids))
+    print(result)
+
+    return {"result": result}
 
 
 auth = VerifyToken()

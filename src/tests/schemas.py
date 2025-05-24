@@ -107,3 +107,17 @@ class AnswerRequest(BaseModel):
     problem_num: int
     answer_num: int
     correct_answer_num: int
+
+class AnswerIdModel(BaseModel):
+    answerId: int = 1
+
+
+class GetCorrectAnswersAmountRequest(BaseModel):
+    # testId: str
+    answers: list[AnswerIdModel] = [
+        AnswerIdModel(answerId=1),
+        AnswerIdModel(answerId=2),
+        AnswerIdModel(answerId=8),
+        AnswerIdModel(answerId=9),
+        AnswerIdModel(answerId=10)
+    ]
